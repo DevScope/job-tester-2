@@ -4,17 +4,37 @@ metadata:
   name: job-tester-2
 spec:
   components:
-    - name: express-server
-      type: webservice
+    - name: catalog
       properties:
-        image: oamdev/hello-world
-        ports:
-         - port: 8000
-           expose: true
+        envVersion: 8-jdk8
+        warURL: https://static.kubevela.net/example/java-example/nanoservice/catalog.war
+      type: java-war
+    - name: customer
+      properties:
+        envVersion: 8-jdk8
+        warURL: https://static.kubevela.net/example/java-example/nanoservice/customer.war
+      type: java-war
+    - dependsOn:
+        - catalog
+        - customer
+      name: order-web
+      properties:
+        env:
+          - name: CATALOG_HOST
+            value: catalog
+          - name: CUSTOMER_HOST
+            value: customer
+        envVersion: 8-jdk8
+        javaOpts: -Xms512m -Xmx512m -Xss256K
+        warURL: https://static.kubevela.net/example/java-example/nanoservice/order.war
+      type: java-war
       traits:
-        - type: scaler
+        - type: gateway
           properties:
-            replicas: 1
+            class: traefik
+            domain: 47.251.8.82.nip.io
+            http:
+              "/order": 8080
   policies:
     - name: target-default
       type: topology
@@ -25,18 +45,21 @@ spec:
     - name: target-prod
       type: topology
       properties:
-        clusters: ["local"]
+        # If you don't have a remote cluster, just use local and change the namespace to a different one
+        #clusters: ["local"]
+        clusters: ["remote"]
         # This namespace must be created before deploying.
-        namespace: "prod"
-    - name: deploy-ha
+        namespace: "default"
+    - name: override-prod-gateway
       type: override
       properties:
         components:
-          - type: webservice
+          - name: order-web
             traits:
-              - type: scaler
+              - type: gateway
                 properties:
-                  replicas: 2
+                  # override the domain with the managed cluster IP
+                  domain: 116.62.199.204.nip.io
   workflow:
     steps:
       - name: deploy2default
@@ -48,4 +71,4 @@ spec:
       - name: deploy2prod
         type: deploy
         properties:
-          policies: ["target-prod", "deploy-ha"]
+          policies: ["target-prod", "override-prod-gateway"]
